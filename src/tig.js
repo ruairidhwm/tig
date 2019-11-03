@@ -8,7 +8,7 @@ let tig = (module.exports = {
    * @description
    * Initialises the current directory as a new repo.
    */
-  init: opts => {
+  init = opts => {
     // Already a repo? Then abort
     if (files.inRepo()) {
       return;
@@ -53,7 +53,7 @@ let tig = (module.exports = {
    * @description
    * Add files that match `path` to the index.
    */
-  add: (path, _) => {
+  add = (path, _) => {
     files.assertInRepo();
     config.assertNotBare();
 
@@ -77,7 +77,7 @@ let tig = (module.exports = {
    * @description
    * Removes files that match `path` from the index.
    */
-  rm: (path, opts) => {
+  rm = (path, opts) => {
     files.assertInRepo();
     config.assertNotBare();
 
@@ -126,7 +126,7 @@ let tig = (module.exports = {
    * to the `objects` directory and points
    * `HEAD` at the commit.
    */
-  commit: opts => {
+  commit = opts => {
     files.assertInRepo();
     config.assertNotBare();
 
