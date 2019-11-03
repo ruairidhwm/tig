@@ -1,0 +1,15 @@
+{
+  "name": "tig",
+  "version": "1.0.0",
+  "description": "Totally Inferior Git - re-creating git in Javascript",
+  "main": "./src/tig.js",
+  "bin": {
+    "tig": "./src/tig.js"
+  },
+  "keywords": [
+    "git",
+    "javascript"
+  ],
+  "author": "Ruairidh Wynne-McHardy (https://ruairidh.dev)",
+  "license": "MIT"
+}
