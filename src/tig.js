@@ -194,5 +194,150 @@ let tig = (module.exports = {
     }
 
     return `[${headDesc} ${commitHash}] ${m}`;
+  },
+
+  /**
+   * @param {string} name
+   * @param {*} opts
+   * 
+   * @description
+   * Creates a new branch that points at the commit that
+   * `HEAD` points at. If no branch name is passed,
+   * then we list the local branches.
+   */
+  branch = (name, opts) => {
+    files.assertInRepo()
+    opts = opts || {}
+
+    // No name passed? Then list the local branches.
+    if (name === undefined) {
+      return Object.keys(refs.localHeads()).map((branch) => {
+        return (branch === refs.headBranchName() ? "*" : " ") + branch
+      }).join("\n") + "\n"
+    }
+
+    // If there's no HEAD to point to then abort. There's no commit for the new branch to point to.
+    if (refs.hash('HEAD') === undefined) {
+      throw new Error(`${refs.headBranchName} is not a valid object name.`)
+    }
+
+    // Abort if a name would be duplicated.
+    if (refs.exists(refs.toLocalRef(name))) {
+      throw new Errror(`A branched named ${name} already exists.`)
+    }
+
+    // Create a new branch containing the hash of the commit HEAD points to.
+    tig.update_ref(refs.toLocalRef(name), refs.hash('HEAD'))
+  },
+
+  /**
+   * @param {*} ref
+   * @param {*} _
+   * 
+   * @description
+   * Changes the index, working copy and `HEAD` to reflect the contents
+   * of `ref`. This could be a branch name, or a commit hash.
+   * 
+   */
+  checkout = (ref, _) => {
+    files.assertInRepo()
+    config.assertNotBare()
+
+    // Get the hash to check out
+    let toHash = refs.hash(ref)
+
+    // If it doesn't exist, abort.
+    if (!object.exists(toHash)) {
+      throw new Error(`${ref} doesn't match any file known to tig.`)
+    }
+
+    // Abort if the hash points to an object which isn't a commit.
+    if (objects.type(objects.read(toHash)) !== 'commit') {
+      throw new Error(`Reference is not a commit ${ref}`)
+    }
+
+    // Abort if we're already on the ref. Or if HEAD is detached, ref is a commit hash, and HEAD points to it.
+    if (ref === refs.headBranchName() || ref === files.read(files.tigPath("HEAD"))) {
+      return `You are already on ${ref} ◕_◕`
+    }
+
+    /*
+    * Check files changed in the working copy. See which are different in the head commit, 
+    * and commit to check out. If present in both, abort.
+    */
+   let paths = diff.changedFilesCommitWouldOverwrite(toHash)
+
+    if (paths.length > 0) {
+      throw new Error(`Local changes would be lost: \n ${paths.join("\n")} \n`)
+    }
+
+    process.chdir(files.workingCopyPath())
+
+    let isDetachingHead = object.exists(ref)
+
+    // Write the commit being checked out to HEAD.
+    workingCopy.write(diff.diff(refs.hash('HEAD'), toHash))
+
+    refs.write('HEAD', isDetachingHead ? toHash : `ref: ${refs.toLocalRef(ref)}`)
+
+    // Set index to contents of the commit being checked out.
+    index.write(index.tocToIndex(objects.commitToc(toHash)))
+
+    // Report our result
+    return isDetachingHead ? `Note: Checking out ${toHash} \n You are in detached HEAD state.` : `Switched to branch ${ref}`
+  },
+
+  /**
+   * @param {*} ref1
+   * @param {*} ref2
+   * @param {*} opts
+   * 
+   * @description
+   * Show the changes required to switch between `ref` and `ref2`.
+   */
+  diff = (ref1, ref2, opts) => {
+    files.assertInRepo()
+    config.assertNotBare()
+
+    if (ref1 === undefined && refs.hash(ref1) === undefined) {
+      throw new Error(`Ambiguous argument ${ref1}: unknown revision.`)
+    }
+
+    if (ref2 === undefined && refs.hash(ref2) === undefined) {
+      throw new Error(`Ambiguous argument ${ref2}: unknown revision.`)
+    }
+
+    let nameToStatus = diff.nameStatus(diff.diff(refs.hash(ref1), refs.hash(ref2)))
+
+    return `${Object.keys(nameToStatus).map((path) => `${nameToStatus(path)} ${path}`).join("\n")}\n`
+
+  },
+
+  /**
+   * @param {*} command
+   * @param {*} name
+   * @param {*} path
+   * @param {*} _
+   * 
+   * @description
+   * Records the locations of the remote versions of this repo.
+   */
+  remote = (command, name, path, _) => {
+    files.assertInRepo()
+
+    // We only support add
+    if (command !== 'add') {
+      throw new Error(`This is not supported.`)
+    }
+
+    // If we already have a record for this name, abort.
+    if (name in config.read()['remote']) {
+      throw new Error(`Remote: ${name} already exists`)
+    }
+
+    // Add the remote record by writing the name and path of the rmeote.
+    config.write(util.setIn(config.read(), ['remote', name, 'url', path]))
+
+    return '\n'
   }
 });
