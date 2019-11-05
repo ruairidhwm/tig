@@ -339,5 +339,82 @@ let tig = (module.exports = {
     config.write(util.setIn(config.read(), ['remote', name, 'url', path]))
 
     return '\n'
+  },
+
+  /**
+   * @param {*} ref
+   * @param {*} _
+   * 
+   * @description
+   * Find the set of differences between the commit that the currently
+   * checked out branch is on and the commit that `ref` points to.
+   * 
+   * It finds or creates a commit that applies these differences to the
+   * checked out branch.
+   */
+  merge = (ref, _) => {
+    files.assertInRepo()
+    config.assertNotBare()
+
+    // Get the receiver hash - the hash of the commit the branch is on.
+    let receiverHash = refs.hash('HEAD')
+
+    // Get the giver hash. The hash for the commit to be merge into the receiver.
+    let giverHash = refs.hash(ref)
+
+    // Abort if the head is detached.
+    if (refs.isHeadDetached()) {
+      throw new Error('This is not supported')
+    }
+
+    // Abort if ref doesn't resolve to a hash or if not for a commit object.
+    if (giverHash === undefined || objects.type(objects.read(giverHash)) !== 'commit') {
+      throw new Error(`${ref}: expected commit type`)
+    }
+
+    // Don't merge if the receiver has the giver's changes.
+    if (object.isUpToDate(receiverHash, giverHash)) {
+      return 'Already up to date.'
+    }
+
+    // Get a list of files changed in the working copy.
+    let paths = diff.changedFilesCommitWouldOverwrite(giverHash) 
+     
+    if (paths.length > 0) {
+      throw new Error(`Local changes would be lost\n ${paths.join('\n')}\n`)
+    }
+
+    // If the receiver is an ancestor of the giver, then we fast-forward.
+    if (merge.canFastForward(receiverHash, giverHash)) {
+      merge.writeFastForwardMerge(receiverHash, giverHash)
+      return 'Fast forward'
+    }
+
+    /**
+     * The repo is put into the merge state. The `MERGE_HEAD` file
+     * is written and contents are set to `giverHash`. The `MERGE_MSG`
+     * file is written and its contents are set to a default merge
+     * commit message.
+     * 
+     * A merge diff is created that will turn the contents of receiver into 
+     * the contents of giver. This contains the path of every file that is
+     * different and whether it was added, modified, removed, or in conflict.
+     * 
+     * Added files are added to the index and working copy. 
+     * Removed files are removed from the index and working copy.
+     * Modified files are modified in the index and working copy.
+     * Files in conflict are written to the working copy to include the receiver
+     * and giver versions. Both the receiver and giver versions are written to the index.
+     */
+    merge.writeNonFastForwardMerge(receiverHash, giverHash, ref)
+
+
+    // If there's a conflict then we alert the user.
+    if (merge.hasConflicts(receiverHash, giverHash)) {
+      return "Automatic merge failed. Fix conflicts and commit the result."
+    }
+
+    // If there are no conflicts, then we commit our changes.
+    return tig.commit()
   }
 });
